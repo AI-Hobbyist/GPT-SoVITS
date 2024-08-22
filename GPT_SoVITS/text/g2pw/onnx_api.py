@@ -1,6 +1,8 @@
 # This code is modified from https://github.com/PaddlePaddle/PaddleSpeech/tree/develop/paddlespeech/t2s/frontend/g2pw
 # This code is modified from https://github.com/GitYCC/g2pW
 
+import warnings
+warnings.filterwarnings("ignore")
 import json
 import os
 import zipfile,requests
@@ -11,6 +13,7 @@ from typing import Tuple
 
 import numpy as np
 import onnxruntime
+onnxruntime.set_default_logger_severity(3)
 from opencc import OpenCC
 from transformers import AutoTokenizer
 from pypinyin import pinyin
@@ -83,10 +86,10 @@ class G2PWOnnxConverter:
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
         sess_options.execution_mode = onnxruntime.ExecutionMode.ORT_SEQUENTIAL
         sess_options.intra_op_num_threads = 2
-        self.session_g2pW = onnxruntime.InferenceSession(
-            os.path.join(uncompress_path, 'g2pW.onnx'),
-            sess_options=sess_options, providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
-            # sess_options=sess_options)
+        try:
+            self.session_g2pW = onnxruntime.InferenceSession(os.path.join(uncompress_path, 'g2pW.onnx'),sess_options=sess_options, providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
+        except:
+            self.session_g2pW = onnxruntime.InferenceSession(os.path.join(uncompress_path, 'g2pW.onnx'),sess_options=sess_options, providers=['CPUExecutionProvider'])
         self.config = load_config(
             config_path=os.path.join(uncompress_path, 'config.py'),
             use_default=True)

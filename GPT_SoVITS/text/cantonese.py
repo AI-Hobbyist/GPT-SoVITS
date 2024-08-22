@@ -1,11 +1,12 @@
+# reference: https://huggingface.co/spaces/Naozumi0512/Bert-VITS2-Cantonese-Yue/blob/main/text/chinese.py
+
 import sys
-# sys.path.append("/data/docker/liujing04/gpt-vits/mq-vits-s1bert_no_bert-kv_cache-new_text-emo")
-sys.path.append("/data/docker/liujing04/gpt-vits/mq-vits-s1bert_no_bert-kv_cache-new_text-emo2v2")
 import re
 import cn2an
 
 from pyjyutping import jyutping
 from text.symbols import punctuation
+from text.zh_normalization.text_normlization import TextNormalizer
 
 normalizer = lambda x: cn2an.transform(x, "an2cn")
 
@@ -106,9 +107,13 @@ def replace_punctuation(text):
 
 
 def text_normalize(text):
-    text = normalizer(text)
-    text = replace_punctuation(text)
-    return text
+    tx = TextNormalizer()
+    sentences = tx.normalize(text)
+    dest_text = ""
+    for sentence in sentences:
+        dest_text += replace_punctuation(sentence)
+    return dest_text
+
 
 punctuation_set=set(punctuation)
 def jyuping_to_initials_finals_tones(jyuping_syllables):

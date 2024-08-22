@@ -1,6 +1,9 @@
+import warnings
+warnings.filterwarnings("ignore")
 import copy
 import math
 import os
+import pdb
 
 import torch
 from torch import nn
@@ -15,7 +18,9 @@ from torch.nn.utils import weight_norm, remove_weight_norm, spectral_norm
 from module.commons import init_weights, get_padding
 from module.mrte_model import MRTE
 from module.quantize import ResidualVectorQuantizer
-from text import symbols
+# from text import symbols
+from text import symbols as symbols_v1
+from text import symbols2 as symbols_v2
 from torch.cuda.amp import autocast
 import contextlib
 
@@ -185,6 +190,7 @@ class TextEncoder(nn.Module):
         kernel_size,
         p_dropout,
         latent_channels=192,
+        version = "v2",
     ):
         super().__init__()
         self.out_channels = out_channels
@@ -195,6 +201,7 @@ class TextEncoder(nn.Module):
         self.kernel_size = kernel_size
         self.p_dropout = p_dropout
         self.latent_channels = latent_channels
+        self.version = version
 
         self.ssl_proj = nn.Conv1d(768, hidden_channels, 1)
 
@@ -210,6 +217,11 @@ class TextEncoder(nn.Module):
         self.encoder_text = attentions.Encoder(
             hidden_channels, filter_channels, n_heads, n_layers, kernel_size, p_dropout
         )
+
+        if self.version == "v1":
+            symbols = symbols_v1.symbols
+        else:
+            symbols = symbols_v2.symbols
         self.text_embedding = nn.Embedding(len(symbols), hidden_channels)
 
         self.mrte = MRTE()
@@ -827,6 +839,7 @@ class SynthesizerTrn(nn.Module):
         use_sdp=True,
         semantic_frame_rate=None,
         freeze_quantizer=None,
+        version = "v2",
         **kwargs
     ):
         super().__init__()
@@ -847,6 +860,7 @@ class SynthesizerTrn(nn.Module):
         self.segment_size = segment_size
         self.n_speakers = n_speakers
         self.gin_channels = gin_channels
+        self.version = version
 
         self.use_sdp = use_sdp
         self.enc_p = TextEncoder(
@@ -857,6 +871,7 @@ class SynthesizerTrn(nn.Module):
             n_layers,
             kernel_size,
             p_dropout,
+            version = version,
         )
         self.dec = Generator(
             inter_channels,
@@ -881,7 +896,7 @@ class SynthesizerTrn(nn.Module):
             inter_channels, hidden_channels, 5, 1, 4, gin_channels=gin_channels
         )
 
-        self.version=os.environ.get("version","v1")
+        # self.version=os.environ.get("version","v1")
         if(self.version=="v1"):
             self.ref_enc = modules.MelStyleEncoder(spec_channels, style_vector_dim=gin_channels)
         else:
@@ -970,16 +985,26 @@ class SynthesizerTrn(nn.Module):
 
     @torch.no_grad()
     def decode(self, codes, text, refer, noise_scale=0.5,speed=1):
-        ge = None
-        if refer is not None:
-            refer_lengths = torch.LongTensor([refer.size(2)]).to(refer.device)
-            refer_mask = torch.unsqueeze(
-                commons.sequence_mask(refer_lengths, refer.size(2)), 1
-            ).to(refer.dtype)
-            if (self.version == "v1"):
-                ge = self.ref_enc(refer * refer_mask, refer_mask)
-            else:
-                ge = self.ref_enc(refer[:, :704] * refer_mask, refer_mask)
+        def get_ge(refer):
+            ge = None
+            if refer is not None:
+                refer_lengths = torch.LongTensor([refer.size(2)]).to(refer.device)
+                refer_mask = torch.unsqueeze(
+                    commons.sequence_mask(refer_lengths, refer.size(2)), 1
+                ).to(refer.dtype)
+                if (self.version == "v1"):
+                    ge = self.ref_enc(refer * refer_mask, refer_mask)
+                else:
+                    ge = self.ref_enc(refer[:, :704] * refer_mask, refer_mask)
+            return ge
+        if(type(refer)==list):
+            ges=[]
+            for _refer in refer:
+                ge=get_ge(_refer)
+                ges.append(ge)
+            ge=torch.stack(ges,0).mean(0)
+        else:
+            ge=get_ge(refer)
 
         y_lengths = torch.LongTensor([codes.size(2) * 2]).to(codes.device)
         text_lengths = torch.LongTensor([text.size(-1)]).to(text.device)
