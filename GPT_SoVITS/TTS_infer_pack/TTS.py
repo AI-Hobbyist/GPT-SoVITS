@@ -182,6 +182,11 @@ class TTS_Config:
 
             
     def _load_configs(self, configs_path: str)->dict:
+        if os.path.exists(configs_path):
+            ...
+        else:
+            print(i18n("路径不存在,使用默认配置"))
+            self.save_configs(configs_path)
         with open(configs_path, 'r') as f:
             configs = yaml.load(f, Loader=yaml.FullLoader)
     
@@ -637,7 +642,7 @@ class TTS:
                     "text": "",                   # str.(required) text to be synthesized
                     "text_lang: "",               # str.(required) language of the text to be synthesized
                     "ref_audio_path": "",         # str.(required) reference audio path
-                    "aux_ref_audio_paths": [],    # list.(optional) auxiliary reference audio paths for multi-speaker synthesis
+                    "aux_ref_audio_paths": [],    # list.(optional) auxiliary reference audio paths for multi-speaker tone fusion
                     "prompt_text": "",            # str.(optional) prompt text for the reference audio
                     "prompt_lang": "",            # str.(required) language of the prompt text for the reference audio
                     "top_k": 5,                   # int. top k sampling
@@ -748,7 +753,8 @@ class TTS:
                 phones, bert_features, norm_text = \
                     self.text_preprocessor.segment_and_extract_feature_for_text(
                                                                         prompt_text, 
-                                                                        prompt_lang)
+                                                                        prompt_lang,
+                                                                        self.configs.version)
                 self.prompt_cache["phones"] = phones
                 self.prompt_cache["bert_features"] = bert_features
                 self.prompt_cache["norm_text"] = norm_text
@@ -760,7 +766,7 @@ class TTS:
         t1 = ttime()
         data:list = None
         if not return_fragment:
-            data = self.text_preprocessor.preprocess(text, text_lang, text_split_method)
+            data = self.text_preprocessor.preprocess(text, text_lang, text_split_method, self.configs.version)
             if len(data) == 0:
                 yield self.configs.sampling_rate, np.zeros(int(self.configs.sampling_rate),
                                                             dtype=np.int16)
