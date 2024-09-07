@@ -151,10 +151,12 @@ APP = FastAPI()
 class TTS_Request(BaseModel):
     text: str = None
     text_lang: str = None
+    ref_audio_base64: str = None
     ref_audio_path: str = None
     aux_ref_audio_paths: list = None
     prompt_lang: str = None
     prompt_text: str = ""
+    speaker_name: str = None
     top_k:int = 5
     top_p:float = 1
     temperature:float = 1
@@ -169,6 +171,7 @@ class TTS_Request(BaseModel):
     streaming_mode:bool = False
     parallel_infer:bool = True
     repetition_penalty:float = 1.35
+    
     
 def b64_audio_to_file(b64_audio):
     file_name = hashlib.md5(b64_audio.encode("utf-8")).hexdigest()
@@ -323,11 +326,18 @@ async def tts_handle(req:dict):
     streaming_mode = req.get("streaming_mode", False)
     return_fragment = req.get("return_fragment", False)
     media_type = req.get("media_type", "wav")
+    ref_audio_base64 = req.get("ref_audio_base64")
+    speaker_name = req.get("speaker_name")
+    text_content = req.get("text")
+    
 
     check_res = check_params(req)
     if check_res is not None:
         return check_res
 
+    if ref_audio_base64 is not None:
+        req["ref_audio_path"] = b64_audio_to_file(ref_audio_base64)
+    
     if streaming_mode or return_fragment:
         req["return_fragment"] = True
     
@@ -347,8 +357,10 @@ async def tts_handle(req:dict):
         else:
             sr, audio_data = next(tts_generator)
             audio_data = pack_audio(BytesIO(), audio_data, sr, media_type).getvalue()
+            print(f"合成成功！当前提交内容：{speaker_name} >>> {text_content}")
             return Response(audio_data, media_type=f"audio/{media_type}")
     except Exception as e:
+        print(e)
         return JSONResponse(status_code=400, content={"message": f"tts failed", "Exception": str(e)})
     
 
@@ -373,6 +385,7 @@ async def tts_get_endpoint(
                         aux_ref_audio_paths:list = None,
                         prompt_lang: str = None,
                         prompt_text: str = "",
+                        speaker_name: str = None,
                         top_k:int = 5,
                         top_p:float = 1,
                         temperature:float = 1,
@@ -388,9 +401,7 @@ async def tts_get_endpoint(
                         parallel_infer:bool = True,
                         repetition_penalty:float = 1.35
                         ):
-    
-    if ref_audio_base64 is not None:
-        ref_audio_path = b64_audio_to_file(ref_audio_base64)
+
     
     req = {
         "text": text,
@@ -400,6 +411,7 @@ async def tts_get_endpoint(
         "aux_ref_audio_paths": aux_ref_audio_paths,
         "prompt_text": prompt_text,
         "prompt_lang": prompt_lang.lower(),
+        "speaker_name": speaker_name,
         "top_k": top_k,
         "top_p": top_p,
         "temperature": temperature,
